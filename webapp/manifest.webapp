@@ -1,0 +1,29 @@
+{
+  "version": "1.0.0",
+  "name": "KaiOS Game Engine",
+  "description": "Fast 2D and 2.5D C++ Game Engine with embedded Lua runtime for KaiOS 2.5 (asm.js)",
+  "launch_path": "/index.html",
+  "type": "web",
+  "icons": {
+    "56": "/assets/icon-56.png",
+    "112": "/assets/icon-112.png"
+  },
+  "developer": {
+    "name": "KaiOS C++ Engine Developer",
+    "url": "https://github.com"
+  },
+  "fullscreen": "true",
+  "orientation": ["portrait-primary"],
+  "locales": {
+    "en-US": {
+      "name": "KaiOS Engine",
+      "description": "C++ Lua asm.js 2D/2.5D Engine"
+    }
+  },
+  "default_locale": "en-US",
+  "permissions": {
+    "spatialnavigation-app-manage": {},
+    "audio-channel-content": {}
+  },
+  "theme_color": "#0f172a"
+}

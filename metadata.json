@@ -1,0 +1,6 @@
+{
+  "name": "KaiOS C++ Lua Game Engine (asm.js)",
+  "description": "C++ 2D/2.5D game engine with embedded Lua scripting compiled to asm.js for KaiOS 2.5 via GitHub Actions CI/CD.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

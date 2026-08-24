@@ -1,0 +1,89 @@
+name: Build KaiOS 2.5 asm.js Game Engine
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-engine:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 3.1.50
+
+      - name: Verify Emscripten installation
+        run: |
+          emcc -v
+
+      - name: Download & Extract Lua 5.1.5 Core
+        run: |
+          mkdir -p src-engine/lua
+          curl -R -O https://www.lua.org/ftp/lua-5.1.5.tar.gz
+          tar -zxf lua-5.1.5.tar.gz
+          cp lua-5.1.5/src/*.c src-engine/lua/
+          cp lua-5.1.5/src/*.h src-engine/lua/
+          # Remove standalone executables so we compile only library sources
+          rm -f src-engine/lua/lua.c src-engine/lua/luac.c
+          echo "Lua 5.1.5 core source files prepared."
+
+      - name: Compile C++ Engine to asm.js (KaiOS 2.5 Target)
+        run: |
+          mkdir -p dist/engine
+          mkdir -p dist/game
+          
+          # Copy WebApp template and Lua game scripts
+          cp -r webapp/* dist/
+          
+          # Compile C++ engine + Lua to asm.js
+          # -s WASM=0 forces asm.js / wasm2js compatible with Gecko 48 (KaiOS 2.5)
+          # -s TOTAL_MEMORY=33554432 (32MB fixed arena for OdinMonkey AOT optimization)
+          emcc \
+            src-engine/main.cpp \
+            src-engine/engine_core.cpp \
+            src-engine/renderer_2d.cpp \
+            src-engine/renderer_25d.cpp \
+            src-engine/audio.cpp \
+            src-engine/lua_bindings.cpp \
+            src-engine/lua/*.c \
+            -Isrc-engine \
+            -Isrc-engine/lua \
+            -O3 \
+            -s WASM=0 \
+            -s TOTAL_MEMORY=33554432 \
+            -s ALLOW_MEMORY_GROWTH=0 \
+            -s USE_SDL=2 \
+            -s DISABLE_EXCEPTION_CATCHING=1 \
+            -s NO_FILESYSTEM=0 \
+            -s ENVIRONMENT=web \
+            -s EXPORTED_RUNTIME_METHODS='["ccall","cwrap"]' \
+            -s EXPORTED_FUNCTIONS='["_main","_run_lua_string","_load_game_file"]' \
+            --preload-file webapp/game@/game \
+            -o dist/engine.js
+
+          echo "Engine compilation complete: dist/engine.js generated."
+          ls -lh dist/
+
+      - name: Package KaiOS 2.5 WebApp (.zip)
+        run: |
+          cd dist
+          zip -r ../kaios-game-engine-asmjs.zip *
+          cd ..
+          echo "Created kaios-game-engine-asmjs.zip (Ready for KaiOS installation and KaiStore submission)"
+          ls -lh kaios-game-engine-asmjs.zip
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: kaios-game-engine-asmjs
+          path: |
+            dist/
+            kaios-game-engine-asmjs.zip
