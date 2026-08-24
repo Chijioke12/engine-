@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Play, Copy, Check, Sparkles, RefreshCw, FileCode } from 'lucide-react';
+import { Play, Copy, Check, Sparkles, RefreshCw, FileCode, Zap } from 'lucide-react';
 import { GameMode } from '../types';
 
 interface LuaEditorProps {
@@ -10,6 +10,101 @@ interface LuaEditorProps {
 }
 
 const PRESET_SCRIPTS: Record<GameMode, string> = {
+  box2d: `-- ===============================================
+-- 2D Rigid Body Box2D Physics & Angry Birds Style
+-- Powered by C++ Box2D-Lite & Lua 5.1 on KaiOS 2.5
+-- ===============================================
+
+function init()
+    -- Set gravity (x=0, y=500 pixels/sec^2)
+    engine.physics.set_gravity(0, 500)
+    engine.physics.clear()
+
+    -- 1. Create Static Ground & Walls
+    ground_id = engine.physics.create_box(120, 290, 240, 20, 0, 0.5, 0.2, true)
+    left_wall = engine.physics.create_box(0, 160, 10, 320, 0, 0.2, 0.5, true)
+    right_wall = engine.physics.create_box(240, 160, 10, 320, 0, 0.2, 0.5, true)
+
+    -- 2. Build a stack of dynamic wooden crates
+    crates = {}
+    for row = 1, 4 do
+        for col = 1, 3 do
+            local bx = 140 + col * 22
+            local by = 260 - row * 22
+            local id = engine.physics.create_box(bx, by, 18, 18, 1.2, 0.4, 0.3, false)
+            table.insert(crates, id)
+        end
+    end
+
+    -- 3. Cannon / Projectile
+    ball_id = engine.physics.create_circle(40, 240, 10, 3.5, 0.2, 0.7, false)
+    aim_angle = -0.6 -- radians
+    power = 420
+
+    engine.audio.play_preset(5) -- Startup SFX
+end
+
+function update(dt)
+    -- Aim Up / Down (D-Pad UP/DOWN or Key 2/8)
+    if engine.input.is_down(KEY_UP) or engine.input.is_down(KEY_2) then
+        aim_angle = aim_angle - 1.5 * dt
+    end
+    if engine.input.is_down(KEY_DOWN) or engine.input.is_down(KEY_8) then
+        aim_angle = aim_angle + 1.5 * dt
+    end
+
+    -- Fire Projectile (Center OK or Key 5)
+    if engine.input.is_pressed(KEY_FIRE) or engine.input.is_pressed(KEY_5) then
+        -- Reset ball position & launch with impulse
+        local jx = math.cos(aim_angle) * power
+        local jy = math.sin(aim_angle) * power
+        engine.physics.set_velocity(ball_id, jx, jy)
+        engine.audio.play_preset(3) -- Cannon SFX
+    end
+
+    -- Reset World (SoftKey Right / F2)
+    if engine.input.is_pressed(KEY_SOFT_RIGHT) or engine.input.is_pressed(KEY_STAR) then
+        init()
+    end
+
+    -- Advance Box2D simulation by dt (8 solver iterations)
+    engine.physics.step(dt, 8)
+end
+
+function draw()
+    engine.renderer2d.clear(0xFF0F172A)
+
+    -- Draw Ground
+    engine.renderer2d.fill_rect(0, 280, 240, 40, 0xFF1E293B)
+    engine.renderer2d.fill_rect(0, 280, 240, 2, 0xFF38BDF8)
+
+    -- Draw Crates with Rotations
+    for i, id in ipairs(crates) do
+        local b = engine.physics.get_body(id)
+        if b then
+            engine.renderer2d.fill_rect(b.x - b.w/2, b.y - b.h/2, b.w, b.h, 0xFFF59E0B)
+            engine.renderer2d.draw_rect(b.x - b.w/2, b.y - b.h/2, b.w, b.h, 0xFFD97706)
+        end
+    end
+
+    -- Draw Ball
+    local ball = engine.physics.get_body(ball_id)
+    if ball then
+        engine.renderer2d.fill_circle(ball.x, ball.y, 8, 0xFFEF4444)
+    end
+
+    -- Draw Aim Trajectory Line
+    local aim_len = 35
+    local ax2 = 40 + math.cos(aim_angle) * aim_len
+    local ay2 = 240 + math.sin(aim_angle) * aim_len
+    engine.renderer2d.draw_line(40, 240, ax2, ay2, 0xFF38BDF8)
+
+    -- HUD
+    engine.renderer2d.draw_text("BOX2D RIGID BODY PHYSICS", 10, 15, 0xFF38BDF8, 1)
+    engine.renderer2d.draw_text("Up/Down: Aim   OK: Fire Cannon", 10, 30, 0xFF94A3B8, 1)
+    engine.renderer2d.draw_text("RSK / *: Reset World", 10, 305, 0xFF64748B, 1)
+end`,
+
   raycast: `-- ===============================================
 -- 2.5D Raycaster (Wolfenstein 3D DDA Engine)
 -- Executed inside embedded Lua 5.1 on KaiOS 2.5
@@ -176,7 +271,7 @@ export const LuaEditor: React.FC<LuaEditorProps> = ({
             <h3 className="text-sm font-semibold text-slate-100 flex items-center gap-2">
               webapp/game/main.lua
               <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/30">
-                Lua 5.1 VM
+                Lua 5.1 VM + Box2D
               </span>
             </h3>
             <p className="text-[11px] text-slate-400">Zero C++ recompilation required. Modify scripts and push anytime.</p>
@@ -207,11 +302,22 @@ export const LuaEditor: React.FC<LuaEditorProps> = ({
       </div>
 
       {/* Preset Selector */}
-      <div className="flex items-center space-x-2 mb-3">
-        <span className="text-xs text-slate-400">Presets:</span>
+      <div className="flex items-center space-x-2 mb-3 overflow-x-auto pb-1">
+        <span className="text-xs text-slate-400 shrink-0">Presets:</span>
+        <button
+          onClick={() => handlePresetSelect('box2d')}
+          className={`px-2.5 py-1 rounded-md text-xs font-medium border transition-colors flex items-center space-x-1 shrink-0 ${
+            activeMode === 'box2d'
+              ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 font-semibold'
+              : 'bg-slate-800/80 text-slate-400 border-slate-700 hover:bg-slate-800'
+          }`}
+        >
+          <Zap size={12} className="text-amber-400" />
+          <span>Box2D Physics</span>
+        </button>
         <button
           onClick={() => handlePresetSelect('raycast')}
-          className={`px-2.5 py-1 rounded-md text-xs font-medium border transition-colors ${
+          className={`px-2.5 py-1 rounded-md text-xs font-medium border transition-colors shrink-0 ${
             activeMode === 'raycast'
               ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
               : 'bg-slate-800/80 text-slate-400 border-slate-700 hover:bg-slate-800'
@@ -221,7 +327,7 @@ export const LuaEditor: React.FC<LuaEditorProps> = ({
         </button>
         <button
           onClick={() => handlePresetSelect('mode7')}
-          className={`px-2.5 py-1 rounded-md text-xs font-medium border transition-colors ${
+          className={`px-2.5 py-1 rounded-md text-xs font-medium border transition-colors shrink-0 ${
             activeMode === 'mode7'
               ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
               : 'bg-slate-800/80 text-slate-400 border-slate-700 hover:bg-slate-800'
@@ -231,7 +337,7 @@ export const LuaEditor: React.FC<LuaEditorProps> = ({
         </button>
         <button
           onClick={() => handlePresetSelect('platformer')}
-          className={`px-2.5 py-1 rounded-md text-xs font-medium border transition-colors ${
+          className={`px-2.5 py-1 rounded-md text-xs font-medium border transition-colors shrink-0 ${
             activeMode === 'platformer'
               ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
               : 'bg-slate-800/80 text-slate-400 border-slate-700 hover:bg-slate-800'
@@ -254,7 +360,7 @@ export const LuaEditor: React.FC<LuaEditorProps> = ({
 
       {/* Footer helper */}
       <div className="mt-3 pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
-        <span>Available APIs: <code className="text-sky-300">engine.renderer2d</code>, <code className="text-sky-300">engine.renderer25d</code>, <code className="text-sky-300">engine.input</code>, <code className="text-sky-300">engine.audio</code></span>
+        <span>Available APIs: <code className="text-amber-300">engine.physics</code>, <code className="text-sky-300">engine.renderer2d</code>, <code className="text-sky-300">engine.renderer25d</code>, <code className="text-sky-300">engine.input</code>, <code className="text-sky-300">engine.audio</code></span>
         <span className="text-slate-400 font-mono">240×320 Target</span>
       </div>
     </div>

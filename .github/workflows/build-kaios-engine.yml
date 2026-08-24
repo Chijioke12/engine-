@@ -52,6 +52,7 @@ jobs:
             src-engine/renderer_2d.cpp \
             src-engine/renderer_25d.cpp \
             src-engine/audio.cpp \
+            src-engine/physics_2d.cpp \
             src-engine/lua_bindings.cpp \
             src-engine/lua/*.c \
             -Isrc-engine \

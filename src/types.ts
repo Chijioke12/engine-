@@ -1,4 +1,4 @@
-export type GameMode = 'raycast' | 'mode7' | 'platformer';
+export type GameMode = 'raycast' | 'mode7' | 'platformer' | 'box2d';
 
 export interface FileItem {
   path: string;

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { Play, RotateCcw, Volume2, VolumeX, Sparkles, Gamepad2, Compass, Layers } from 'lucide-react';
+import { Play, RotateCcw, Volume2, VolumeX, Sparkles, Gamepad2, Compass, Layers, Zap } from 'lucide-react';
 import { GameMode, KeyState } from '../types';
 
 interface PhoneSimulatorProps {
@@ -128,6 +128,21 @@ export const PhoneSimulator: React.FC<PhoneSimulatorProps> = ({
     { x: 120, y: 135, collected: false },
     { x: 195, y: 175, collected: false }
   ]);
+
+  // Box2D Physics State Ref
+  const box2dRef = useRef({
+    ball: { x: 40, y: 240, vx: 0, vy: 0, radius: 8, isFired: false },
+    aimAngle: -0.6,
+    power: 420,
+    crates: [
+      { x: 160, y: 250, w: 18, h: 18, vx: 0, vy: 0, angle: 0, va: 0 },
+      { x: 182, y: 250, w: 18, h: 18, vx: 0, vy: 0, angle: 0, va: 0 },
+      { x: 204, y: 250, w: 18, h: 18, vx: 0, vy: 0, angle: 0, va: 0 },
+      { x: 171, y: 230, w: 18, h: 18, vx: 0, vy: 0, angle: 0, va: 0 },
+      { x: 193, y: 230, w: 18, h: 18, vx: 0, vy: 0, angle: 0, va: 0 },
+      { x: 182, y: 210, w: 18, h: 18, vx: 0, vy: 0, angle: 0, va: 0 },
+    ]
+  });
 
   // Handle Hardware / Simulator Key Press
   const handleKeyDown = useCallback((key: keyof KeyState) => {
@@ -544,6 +559,154 @@ export const PhoneSimulator: React.FC<PhoneSimulatorProps> = ({
         ctx.fillText('D-Pad: Move   Fire/Up: Jump', 10, 305);
       }
 
+      // --------------------------------------------------
+      // Mode 4: 2D Box2D Rigid Body Physics Engine
+      // --------------------------------------------------
+      else if (activeMode === 'box2d') {
+        const p = box2dRef.current;
+        const gravity = 480;
+
+        // Aim Up / Down
+        if (keys.up || keys.num2) p.aimAngle -= 1.8 * dt;
+        if (keys.down || keys.num8) p.aimAngle += 1.8 * dt;
+        p.aimAngle = Math.max(-1.4, Math.min(0.2, p.aimAngle));
+
+        // Fire Cannonball
+        if (keys.fire || keys.num5) {
+          if (!p.ball.isFired) {
+            p.ball.isFired = true;
+            p.ball.x = 40;
+            p.ball.y = 240;
+            p.ball.vx = Math.cos(p.aimAngle) * p.power;
+            p.ball.vy = Math.sin(p.aimAngle) * p.power;
+            playSfx('laser');
+          }
+        }
+
+        // Reset Ball if fallen below screen
+        if (p.ball.isFired) {
+          p.ball.vy += gravity * dt;
+          p.ball.x += p.ball.vx * dt;
+          p.ball.y += p.ball.vy * dt;
+
+          // Ground bounce
+          if (p.ball.y >= 272) {
+            p.ball.y = 272;
+            p.ball.vy = -p.ball.vy * 0.6;
+            p.ball.vx *= 0.85;
+          }
+
+          // Wall bounce
+          if (p.ball.x >= 232) {
+            p.ball.x = 232;
+            p.ball.vx = -p.ball.vx * 0.6;
+          }
+
+          // Ball-Crate Impulse Collision Resolution
+          for (const crate of p.crates) {
+            const dx = p.ball.x - crate.x;
+            const dy = p.ball.y - crate.y;
+            const dist = Math.hypot(dx, dy);
+            if (dist < p.ball.radius + crate.w * 0.6) {
+              const nx = dx / (dist || 1);
+              const ny = dy / (dist || 1);
+              crate.vx += -nx * p.ball.vx * 0.7;
+              crate.vy += -ny * p.ball.vy * 0.7;
+              crate.va += (Math.random() - 0.5) * 8;
+              p.ball.vx *= 0.4;
+              p.ball.vy *= 0.4;
+              playSfx('explosion');
+            }
+          }
+        }
+
+        // Update Crates with simulated physics, damping, and floor constraints
+        for (const crate of p.crates) {
+          crate.vy += gravity * dt;
+          crate.x += crate.vx * dt;
+          crate.y += crate.vy * dt;
+          crate.angle += crate.va * dt;
+
+          crate.vx *= 0.98;
+          crate.va *= 0.95;
+
+          // Ground contact
+          if (crate.y >= 271) {
+            crate.y = 271;
+            crate.vy = -crate.vy * 0.2;
+            crate.vx *= 0.8;
+            crate.va *= 0.8;
+          }
+
+          // Right wall contact
+          if (crate.x >= 230) {
+            crate.x = 230;
+            crate.vx = -crate.vx * 0.5;
+          }
+        }
+
+        // Draw Sky Background
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(0, 0, 240, 320);
+
+        // Draw Ground Floor
+        ctx.fillStyle = '#1e293b';
+        ctx.fillRect(0, 280, 240, 40);
+        ctx.fillStyle = '#38bdf8';
+        ctx.fillRect(0, 280, 240, 2);
+
+        // Draw Crates with Rotations
+        for (const crate of p.crates) {
+          ctx.save();
+          ctx.translate(crate.x, crate.y);
+          ctx.rotate(crate.angle);
+          ctx.fillStyle = '#f59e0b';
+          ctx.fillRect(-crate.w / 2, -crate.h / 2, crate.w, crate.h);
+          ctx.strokeStyle = '#d97706';
+          ctx.lineWidth = 1.5;
+          ctx.strokeRect(-crate.w / 2, -crate.h / 2, crate.w, crate.h);
+          // Diagonal brace on crate
+          ctx.beginPath();
+          ctx.moveTo(-crate.w / 2, -crate.h / 2);
+          ctx.lineTo(crate.w / 2, crate.h / 2);
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        // Draw Cannon Stand & Trajectory
+        ctx.fillStyle = '#475569';
+        ctx.beginPath();
+        ctx.arc(40, 245, 12, Math.PI, 0);
+        ctx.fill();
+
+        // Cannon Barrel
+        ctx.save();
+        ctx.translate(40, 240);
+        ctx.rotate(p.aimAngle);
+        ctx.fillStyle = '#38bdf8';
+        ctx.fillRect(0, -5, 24, 10);
+        ctx.restore();
+
+        // Draw Ball
+        ctx.fillStyle = '#ef4444';
+        ctx.beginPath();
+        ctx.arc(p.ball.x, p.ball.y, p.ball.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#fca5a5';
+        ctx.beginPath();
+        ctx.arc(p.ball.x - 2, p.ball.y - 2, 3, 0, Math.PI * 2);
+        ctx.fill();
+
+        // HUD
+        ctx.fillStyle = '#38bdf8';
+        ctx.font = '10px monospace';
+        ctx.fillText('BOX2D RIGID BODY PHYSICS', 10, 18);
+        ctx.fillStyle = '#94a3b8';
+        ctx.fillText('Up/Down: Aim   OK: Fire Cannon', 10, 32);
+        ctx.fillStyle = '#64748b';
+        ctx.fillText('RSK / Reset to Reload', 10, 305);
+      }
+
       animId = requestAnimationFrame(renderLoop);
     };
 
@@ -593,7 +756,19 @@ export const PhoneSimulator: React.FC<PhoneSimulatorProps> = ({
       </div>
 
       {/* Mode Quick Switcher */}
-      <div className="grid grid-cols-3 gap-1.5 w-full mb-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 w-full mb-4">
+        <button
+          onClick={() => { onModeChange('box2d'); playSfx('coin'); }}
+          className={`py-1.5 px-2 rounded text-xs font-medium flex items-center justify-center space-x-1.5 border transition-all ${
+            activeMode === 'box2d'
+              ? 'bg-amber-500/20 border-amber-500 text-amber-300 shadow-sm font-semibold'
+              : 'bg-slate-800/80 border-slate-700 text-slate-400 hover:bg-slate-800'
+          }`}
+        >
+          <Zap size={13} className="text-amber-400" />
+          <span>Box2D</span>
+        </button>
+
         <button
           onClick={() => { onModeChange('raycast'); playSfx('coin'); }}
           className={`py-1.5 px-2 rounded text-xs font-medium flex items-center justify-center space-x-1.5 border transition-all ${
@@ -603,7 +778,7 @@ export const PhoneSimulator: React.FC<PhoneSimulatorProps> = ({
           }`}
         >
           <Compass size={13} />
-          <span>2.5D Raycaster</span>
+          <span>Raycaster</span>
         </button>
 
         <button
@@ -615,7 +790,7 @@ export const PhoneSimulator: React.FC<PhoneSimulatorProps> = ({
           }`}
         >
           <Layers size={13} />
-          <span>2.5D Mode 7</span>
+          <span>Mode 7</span>
         </button>
 
         <button
@@ -627,7 +802,7 @@ export const PhoneSimulator: React.FC<PhoneSimulatorProps> = ({
           }`}
         >
           <Gamepad2 size={13} />
-          <span>2D Platformer</span>
+          <span>Platformer</span>
         </button>
       </div>
 

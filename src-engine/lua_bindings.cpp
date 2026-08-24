@@ -3,6 +3,7 @@
 #include "renderer_2d.hpp"
 #include "renderer_25d.hpp"
 #include "audio.hpp"
+#include "physics_2d.hpp"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -94,7 +95,6 @@ static int l_r2d_draw_text(lua_State* L) {
 // ----------------------------------------------------
 
 static int l_r25d_raycast(lua_State* L) {
-    // cam_x, cam_y, dir_x, dir_y, plane_x, plane_y, map_table, map_w, map_h, ceil_col, floor_col
     Renderer25D::RaycastCamera cam;
     cam.x = (float)luaL_checknumber(L, 1);
     cam.y = (float)luaL_checknumber(L, 2);
@@ -103,24 +103,128 @@ static int l_r25d_raycast(lua_State* L) {
     cam.plane_x = (float)luaL_checknumber(L, 5);
     cam.plane_y = (float)luaL_checknumber(L, 6);
 
+    if (!lua_istable(L, 7)) {
+        luaL_error(L, "raycast expected map table at arg 7");
+        return 0;
+    }
+
     int map_w = (int)luaL_checknumber(L, 8);
     int map_h = (int)luaL_checknumber(L, 9);
     uint32_t ceil_col = (uint32_t)luaL_optnumber(L, 10, 0xFF1E293B);
     uint32_t floor_col = (uint32_t)luaL_optnumber(L, 11, 0xFF0F172A);
 
-    // Read map array from table (or static memory)
-    static uint8_t s_temp_map[64 * 64];
-    if (lua_istable(L, 7)) {
-        int total = map_w * map_h;
-        if (total > 64 * 64) total = 64 * 64;
-        for (int i = 0; i < total; ++i) {
-            lua_rawgeti(L, 7, i + 1);
-            s_temp_map[i] = (uint8_t)lua_tonumber(L, -1);
-            lua_pop(L, 1);
-        }
+    int total_tiles = map_w * map_h;
+    uint8_t* map_data = (uint8_t*)malloc(total_tiles);
+    if (!map_data) return 0;
+
+    for (int i = 1; i <= total_tiles; ++i) {
+        lua_rawgeti(L, 7, i);
+        map_data[i - 1] = (uint8_t)lua_tonumber(L, -1);
+        lua_pop(L, 1);
     }
 
-    Renderer25D::render_raycaster(cam, s_temp_map, map_w, map_h, NULL, 0, NULL, 0, ceil_col, floor_col);
+    Renderer25D::render_raycast(cam, map_data, map_w, map_h, ceil_col, floor_col);
+    free(map_data);
+    return 0;
+}
+
+// ----------------------------------------------------
+// Lua C API Bindings: engine.physics (Box2D-Lite Rigid Bodies & Joints)
+// ----------------------------------------------------
+
+static int l_physics_set_gravity(lua_State* L) {
+    float gx = (float)luaL_checknumber(L, 1);
+    float gy = (float)luaL_checknumber(L, 2);
+    PhysicsEngine::set_gravity(gx, gy);
+    return 0;
+}
+
+static int l_physics_create_box(lua_State* L) {
+    float x = (float)luaL_checknumber(L, 1);
+    float y = (float)luaL_checknumber(L, 2);
+    float w = (float)luaL_checknumber(L, 3);
+    float h = (float)luaL_checknumber(L, 4);
+    float mass = (float)luaL_optnumber(L, 5, 1.0f);
+    float friction = (float)luaL_optnumber(L, 6, 0.3f);
+    float restitution = (float)luaL_optnumber(L, 7, 0.4f);
+    bool is_static = lua_toboolean(L, 8);
+
+    int id = PhysicsEngine::create_box(x, y, w, h, mass, friction, restitution, is_static);
+    lua_pushinteger(L, id);
+    return 1;
+}
+
+static int l_physics_create_circle(lua_State* L) {
+    float x = (float)luaL_checknumber(L, 1);
+    float y = (float)luaL_checknumber(L, 2);
+    float r = (float)luaL_checknumber(L, 3);
+    float mass = (float)luaL_optnumber(L, 4, 1.0f);
+    float friction = (float)luaL_optnumber(L, 5, 0.3f);
+    float restitution = (float)luaL_optnumber(L, 6, 0.6f);
+    bool is_static = lua_toboolean(L, 7);
+
+    int id = PhysicsEngine::create_circle(x, y, r, mass, friction, restitution, is_static);
+    lua_pushinteger(L, id);
+    return 1;
+}
+
+static int l_physics_get_body(lua_State* L) {
+    int id = (int)luaL_checknumber(L, 1);
+    RigidBody* b = PhysicsEngine::get_body(id);
+    if (!b) {
+        lua_pushnil(L);
+        return 1;
+    }
+
+    lua_newtable(L);
+    lua_pushnumber(L, b->position.x); lua_setfield(L, -2, "x");
+    lua_pushnumber(L, b->position.y); lua_setfield(L, -2, "y");
+    lua_pushnumber(L, b->rotation);   lua_setfield(L, -2, "angle");
+    lua_pushnumber(L, b->velocity.x); lua_setfield(L, -2, "vx");
+    lua_pushnumber(L, b->velocity.y); lua_setfield(L, -2, "vy");
+    lua_pushnumber(L, b->width_height.x); lua_setfield(L, -2, "w");
+    lua_pushnumber(L, b->width_height.y); lua_setfield(L, -2, "h");
+    return 1;
+}
+
+static int l_physics_apply_impulse(lua_State* L) {
+    int id = (int)luaL_checknumber(L, 1);
+    float jx = (float)luaL_checknumber(L, 2);
+    float jy = (float)luaL_checknumber(L, 3);
+    RigidBody* b = PhysicsEngine::get_body(id);
+    if (b) {
+        PhysicsEngine::apply_impulse(id, jx, jy, b->position.x, b->position.y);
+    }
+    return 0;
+}
+
+static int l_physics_set_velocity(lua_State* L) {
+    int id = (int)luaL_checknumber(L, 1);
+    float vx = (float)luaL_checknumber(L, 2);
+    float vy = (float)luaL_checknumber(L, 3);
+    PhysicsEngine::set_velocity(id, vx, vy);
+    return 0;
+}
+
+static int l_physics_create_joint(lua_State* L) {
+    int ba = (int)luaL_checknumber(L, 1);
+    int bb = (int)luaL_checknumber(L, 2);
+    float ax = (float)luaL_checknumber(L, 3);
+    float ay = (float)luaL_checknumber(L, 4);
+    int jid = PhysicsEngine::create_revolute_joint(ba, bb, ax, ay);
+    lua_pushinteger(L, jid);
+    return 1;
+}
+
+static int l_physics_step(lua_State* L) {
+    float dt = (float)luaL_checknumber(L, 1);
+    int iterations = (int)luaL_optnumber(L, 2, 8);
+    PhysicsEngine::step(dt, iterations);
+    return 0;
+}
+
+static int l_physics_clear(lua_State* L) {
+    PhysicsEngine::clear_world();
     return 0;
 }
 
@@ -130,22 +234,19 @@ static int l_r25d_raycast(lua_State* L) {
 
 static int l_input_is_down(lua_State* L) {
     int key = (int)luaL_checknumber(L, 1);
-    bool down = (key >= 0 && key < KEY_COUNT) ? g_engine.keys_down[key] : false;
-    lua_pushboolean(L, down);
+    lua_pushboolean(L, EngineCore::is_key_down(key));
     return 1;
 }
 
 static int l_input_is_pressed(lua_State* L) {
     int key = (int)luaL_checknumber(L, 1);
-    bool pressed = (key >= 0 && key < KEY_COUNT) ? g_engine.keys_pressed[key] : false;
-    lua_pushboolean(L, pressed);
+    lua_pushboolean(L, EngineCore::is_key_pressed(key));
     return 1;
 }
 
 static int l_input_is_released(lua_State* L) {
     int key = (int)luaL_checknumber(L, 1);
-    bool rel = (key >= 0 && key < KEY_COUNT) ? g_engine.keys_released[key] : false;
-    lua_pushboolean(L, rel);
+    lua_pushboolean(L, EngineCore::is_key_released(key));
     return 1;
 }
 
@@ -154,29 +255,28 @@ static int l_input_is_released(lua_State* L) {
 // ----------------------------------------------------
 
 static int l_audio_play_preset(lua_State* L) {
-    int id = (int)luaL_checknumber(L, 1);
-    AudioEngine::play_preset(id);
+    int preset_id = (int)luaL_checknumber(L, 1);
+    AudioSystem::play_preset(preset_id);
     return 0;
 }
 
 static int l_audio_play_sfx(lua_State* L) {
-    int wave = (int)luaL_checknumber(L, 1);
-    float f0 = (float)luaL_checknumber(L, 2);
-    float f1 = (float)luaL_checknumber(L, 3);
-    float dur = (float)luaL_checknumber(L, 4);
-    float vol = (float)luaL_optnumber(L, 5, 0.5f);
-    AudioEngine::play_sfx((AudioEngine::SoundWave)wave, f0, f1, dur, vol);
+    int wave_type = (int)luaL_checknumber(L, 1);
+    float freq = (float)luaL_checknumber(L, 2);
+    float duration = (float)luaL_checknumber(L, 3);
+    float vol = (float)luaL_optnumber(L, 4, 0.5f);
+    AudioSystem::play_sfx(wave_type, freq, duration, vol);
     return 0;
 }
 
 // ----------------------------------------------------
-// Lua Engine Module Registration
+// Module Initialization & Registration
 // ----------------------------------------------------
 
 namespace LuaBindings {
 
-void init(lua_State* L) {
-    // 1. Create global Key constants (KEY_UP, KEY_SOFT_LEFT, etc.)
+void register_engine_api(lua_State* L) {
+    // 1. Key constants
     lua_pushinteger(L, KEY_UP);         lua_setglobal(L, "KEY_UP");
     lua_pushinteger(L, KEY_DOWN);       lua_setglobal(L, "KEY_DOWN");
     lua_pushinteger(L, KEY_LEFT);       lua_setglobal(L, "KEY_LEFT");
@@ -184,16 +284,16 @@ void init(lua_State* L) {
     lua_pushinteger(L, KEY_FIRE);       lua_setglobal(L, "KEY_FIRE");
     lua_pushinteger(L, KEY_SOFT_LEFT);  lua_setglobal(L, "KEY_SOFT_LEFT");
     lua_pushinteger(L, KEY_SOFT_RIGHT); lua_setglobal(L, "KEY_SOFT_RIGHT");
-    lua_pushinteger(L, KEY_NUM0);       lua_setglobal(L, "KEY_0");
-    lua_pushinteger(L, KEY_NUM1);       lua_setglobal(L, "KEY_1");
-    lua_pushinteger(L, KEY_NUM2);       lua_setglobal(L, "KEY_2");
-    lua_pushinteger(L, KEY_NUM3);       lua_setglobal(L, "KEY_3");
-    lua_pushinteger(L, KEY_NUM4);       lua_setglobal(L, "KEY_4");
-    lua_pushinteger(L, KEY_NUM5);       lua_setglobal(L, "KEY_5");
-    lua_pushinteger(L, KEY_NUM6);       lua_setglobal(L, "KEY_6");
-    lua_pushinteger(L, KEY_NUM7);       lua_setglobal(L, "KEY_7");
-    lua_pushinteger(L, KEY_NUM8);       lua_setglobal(L, "KEY_8");
-    lua_pushinteger(L, KEY_NUM9);       lua_setglobal(L, "KEY_9");
+    lua_pushinteger(L, KEY_0);          lua_setglobal(L, "KEY_0");
+    lua_pushinteger(L, KEY_1);          lua_setglobal(L, "KEY_1");
+    lua_pushinteger(L, KEY_2);          lua_setglobal(L, "KEY_2");
+    lua_pushinteger(L, KEY_3);          lua_setglobal(L, "KEY_3");
+    lua_pushinteger(L, KEY_4);          lua_setglobal(L, "KEY_4");
+    lua_pushinteger(L, KEY_5);          lua_setglobal(L, "KEY_5");
+    lua_pushinteger(L, KEY_6);          lua_setglobal(L, "KEY_6");
+    lua_pushinteger(L, KEY_7);          lua_setglobal(L, "KEY_7");
+    lua_pushinteger(L, KEY_8);          lua_setglobal(L, "KEY_8");
+    lua_pushinteger(L, KEY_9);          lua_setglobal(L, "KEY_9");
     lua_pushinteger(L, KEY_STAR);       lua_setglobal(L, "KEY_STAR");
     lua_pushinteger(L, KEY_HASH);       lua_setglobal(L, "KEY_HASH");
     lua_pushinteger(L, KEY_CALL);       lua_setglobal(L, "KEY_CALL");
@@ -222,6 +322,19 @@ void init(lua_State* L) {
     lua_newtable(L);
     lua_pushcfunction(L, l_r25d_raycast);    lua_setfield(L, -2, "raycast");
     lua_setfield(L, -2, "renderer25d");
+
+    // engine.physics (Box2D-Lite)
+    lua_newtable(L);
+    lua_pushcfunction(L, l_physics_set_gravity);   lua_setfield(L, -2, "set_gravity");
+    lua_pushcfunction(L, l_physics_create_box);     lua_setfield(L, -2, "create_box");
+    lua_pushcfunction(L, l_physics_create_circle);  lua_setfield(L, -2, "create_circle");
+    lua_pushcfunction(L, l_physics_get_body);       lua_setfield(L, -2, "get_body");
+    lua_pushcfunction(L, l_physics_apply_impulse);  lua_setfield(L, -2, "apply_impulse");
+    lua_pushcfunction(L, l_physics_set_velocity);   lua_setfield(L, -2, "set_velocity");
+    lua_pushcfunction(L, l_physics_create_joint);   lua_setfield(L, -2, "create_joint");
+    lua_pushcfunction(L, l_physics_step);           lua_setfield(L, -2, "step");
+    lua_pushcfunction(L, l_physics_clear);          lua_setfield(L, -2, "clear");
+    lua_setfield(L, -2, "physics");
 
     // engine.input
     lua_newtable(L);
