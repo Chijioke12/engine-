@@ -45,6 +45,8 @@ struct EngineState {
     bool keys_down[KEY_COUNT];
     bool keys_pressed[KEY_COUNT];
     bool keys_released[KEY_COUNT];
+    bool pending_keys_pressed[KEY_COUNT];
+    bool pending_keys_released[KEY_COUNT];
     float delta_time;
     uint32_t frame_count;
     double total_time;

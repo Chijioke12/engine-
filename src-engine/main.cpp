@@ -130,10 +130,16 @@ static EM_BOOL on_emscripten_keyup(int eventType, const EmscriptenKeyboardEvent 
 #endif
 
 static void process_events() {
-    // Reset frame-specific key transitions
-    memset(g_engine.keys_pressed, 0, sizeof(g_engine.keys_pressed));
-    memset(g_engine.keys_released, 0, sizeof(g_engine.keys_released));
+    // 1. Flush pending key press/release events to current frame arrays
+    for (int i = 0; i < KEY_COUNT; i++) {
+        g_engine.keys_pressed[i] = g_engine.pending_keys_pressed[i];
+        g_engine.pending_keys_pressed[i] = false;
 
+        g_engine.keys_released[i] = g_engine.pending_keys_released[i];
+        g_engine.pending_keys_released[i] = false;
+    }
+
+    // 2. Poll SDL events
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
         if (event.type == SDL_QUIT) {
@@ -141,18 +147,12 @@ static void process_events() {
         } else if (event.type == SDL_KEYDOWN) {
             int k = map_sdl_key_to_kaios(event.key.keysym.sym);
             if (k >= 0 && k < KEY_COUNT) {
-                if (!g_engine.keys_down[k]) {
-                    g_engine.keys_pressed[k] = true;
-                }
-                g_engine.keys_down[k] = true;
+                engine_set_key_state(k, true);
             }
         } else if (event.type == SDL_KEYUP) {
             int k = map_sdl_key_to_kaios(event.key.keysym.sym);
             if (k >= 0 && k < KEY_COUNT) {
-                if (g_engine.keys_down[k]) {
-                    g_engine.keys_released[k] = true;
-                }
-                g_engine.keys_down[k] = false;
+                engine_set_key_state(k, false);
             }
         }
     }
