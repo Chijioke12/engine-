@@ -102,6 +102,8 @@ jobs:
 #include <stdint.h>
 #include <stdbool.h>
 #include <math.h>
+#include <cmath>
+#include <stdlib.h>
 
 #define MAX_PHYSICS_BODIES 64
 #define MAX_PHYSICS_JOINTS 32

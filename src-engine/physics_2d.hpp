@@ -1,6 +1,9 @@
 #pragma once
 #include <stdint.h>
 #include <stdbool.h>
+#include <math.h>
+#include <cmath>
+#include <stdlib.h>
 
 // High-performance 2D Rigid Body Physics Engine for KaiOS 2.5 (Box2D-Lite ANSI C++)
 // Supports dynamic/static bodies, mass/inertia, restitution, friction, stacking, impulse resolution, and joints.
