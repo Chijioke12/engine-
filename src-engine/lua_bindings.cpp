@@ -321,9 +321,12 @@ void register_engine_api(lua_State* L) {
     lua_pushcfunction(L, l_r2d_clear);       lua_setfield(L, -2, "clear");
     lua_pushcfunction(L, l_r2d_pixel);       lua_setfield(L, -2, "pixel");
     lua_pushcfunction(L, l_r2d_line);        lua_setfield(L, -2, "line");
+    lua_pushcfunction(L, l_r2d_line);        lua_setfield(L, -2, "draw_line");
     lua_pushcfunction(L, l_r2d_rect);        lua_setfield(L, -2, "rect");
+    lua_pushcfunction(L, l_r2d_rect);        lua_setfield(L, -2, "draw_rect");
     lua_pushcfunction(L, l_r2d_fill_rect);   lua_setfield(L, -2, "fill_rect");
     lua_pushcfunction(L, l_r2d_circle);      lua_setfield(L, -2, "circle");
+    lua_pushcfunction(L, l_r2d_circle);      lua_setfield(L, -2, "draw_circle");
     lua_pushcfunction(L, l_r2d_fill_circle); lua_setfield(L, -2, "fill_circle");
     lua_pushcfunction(L, l_r2d_draw_text);   lua_setfield(L, -2, "draw_text");
     lua_setfield(L, -2, "renderer2d");
