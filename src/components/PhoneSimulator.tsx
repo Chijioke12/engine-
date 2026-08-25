@@ -149,17 +149,29 @@ export const PhoneSimulator: React.FC<PhoneSimulatorProps> = ({
     keysRef.current[key] = true;
     setPressedKey(key);
 
-    if (key === 'softRight' || key === 'num1') {
+    const modes: GameMode[] = ['raycast', 'mode7', 'platformer', 'box2d'];
+
+    if (key === 'softRight') {
+      const currentIndex = modes.indexOf(activeMode);
+      const nextMode = modes[(currentIndex + 1) % modes.length];
+      onModeChange(nextMode);
+      playSfx('coin');
+    } else if (key === 'softLeft') {
+      const currentIndex = modes.indexOf(activeMode);
+      const prevMode = modes[(currentIndex - 1 + modes.length) % modes.length];
+      onModeChange(prevMode);
+      playSfx('coin');
+    } else if (key === 'num1') {
       onModeChange('raycast');
       playSfx('coin');
-    } else if (key === 'num2') {
+    } else if (key === 'num2' && activeMode !== 'mode7' && activeMode !== 'raycast' && activeMode !== 'box2d') {
       onModeChange('mode7');
       playSfx('coin');
     } else if (key === 'num3') {
       onModeChange('platformer');
       playSfx('coin');
     }
-  }, [onModeChange, playSfx]);
+  }, [activeMode, onModeChange, playSfx]);
 
   const handleKeyUp = useCallback((key: keyof KeyState) => {
     keysRef.current[key] = false;
@@ -373,7 +385,7 @@ export const PhoneSimulator: React.FC<PhoneSimulatorProps> = ({
         ctx.font = '10px monospace';
         ctx.fillText('2.5D RAYCASTER (Wolf3D)', 10, 290);
         ctx.fillStyle = '#94a3b8';
-        ctx.fillText('D-Pad: Move  Fire: Action', 10, 305);
+        ctx.fillText('D-Pad: Move  SOFTR: Switch Mode', 10, 305);
       }
 
       // --------------------------------------------------
@@ -704,7 +716,7 @@ export const PhoneSimulator: React.FC<PhoneSimulatorProps> = ({
         ctx.fillStyle = '#94a3b8';
         ctx.fillText('Up/Down: Aim   OK: Fire Cannon', 10, 32);
         ctx.fillStyle = '#64748b';
-        ctx.fillText('RSK / Reset to Reload', 10, 305);
+        ctx.fillText('SOFTR: Switch Mode', 10, 305);
       }
 
       animId = requestAnimationFrame(renderLoop);

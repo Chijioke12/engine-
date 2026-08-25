@@ -71,7 +71,7 @@ jobs:
             -s NO_FILESYSTEM=0 \\
             -s ENVIRONMENT=web \\
             -s EXPORTED_RUNTIME_METHODS='["ccall","cwrap"]' \\
-            -s EXPORTED_FUNCTIONS='["_main","_run_lua_string","_load_game_file"]' \\
+            -s EXPORTED_FUNCTIONS='["_main","_run_lua_string","_load_game_file","_engine_set_key_state"]' \\
             --preload-file webapp/game@/game \\
             -o dist/engine.js
 
@@ -91,6 +91,243 @@ jobs:
           path: |
             dist/
             kaios-game-engine-asmjs.zip`
+  },
+  {
+    path: 'src-engine/main.cpp',
+    name: 'main.cpp',
+    category: 'cpp',
+    description: 'Engine main entry point, SDL window setup, Emscripten HTML5 KaiOS key handlers & main loop.',
+    language: 'cpp',
+    content: `#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <math.h>
+
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#include <emscripten/html5.h>
+#endif
+
+#include <SDL2/SDL.h>
+
+extern "C" {
+#include "lua.h"
+#include "lauxlib.h"
+#include "lualib.h"
+}
+
+#include "engine_core.hpp"
+#include "renderer_2d.hpp"
+#include "renderer_25d.hpp"
+#include "audio.hpp"
+#include "lua_bindings.hpp"
+
+static SDL_Window* g_window = NULL;
+static SDL_Renderer* g_renderer = NULL;
+static SDL_Texture* g_texture = NULL;
+static lua_State* g_lua = NULL;
+static uint32_t g_last_ticks = 0;
+
+EngineState g_engine;
+
+// KaiOS Key Mapping from SDL keysym
+static int map_sdl_key_to_kaios(SDL_Keycode key) {
+    switch (key) {
+        case SDLK_UP: return KEY_UP;
+        case SDLK_DOWN: return KEY_DOWN;
+        case SDLK_LEFT: return KEY_LEFT;
+        case SDLK_RIGHT: return KEY_RIGHT;
+        case SDLK_RETURN:
+        case SDLK_SPACE: return KEY_FIRE;
+        case SDLK_F1: return KEY_SOFT_LEFT;
+        case SDLK_F2: return KEY_SOFT_RIGHT;
+        case SDLK_0: return KEY_NUM0;
+        case SDLK_1: return KEY_NUM1;
+        case SDLK_2: return KEY_NUM2;
+        case SDLK_3: return KEY_NUM3;
+        case SDLK_4: return KEY_NUM4;
+        case SDLK_5: return KEY_NUM5;
+        case SDLK_6: return KEY_NUM6;
+        case SDLK_7: return KEY_NUM7;
+        case SDLK_8: return KEY_NUM8;
+        case SDLK_9: return KEY_NUM9;
+        case SDLK_ASTERISK: return KEY_STAR;
+        case SDLK_HASH: return KEY_HASH;
+        case SDLK_BACKSPACE:
+        case SDLK_ESCAPE: return KEY_BACK;
+        default: return -1;
+    }
+}
+
+#ifdef __EMSCRIPTEN__
+static int parse_emscripten_kaios_key(const EmscriptenKeyboardEvent *e) {
+    if (!e) return -1;
+
+    // KaiOS & Browser Soft Left Key (SoftLeft, SoftKeyLeft, F1, keyCode 112/115)
+    if (strcmp(e->key, "SoftLeft") == 0 || 
+        strcmp(e->key, "SoftKeyLeft") == 0 || 
+        strcmp(e->key, "F1") == 0 || 
+        strcmp(e->code, "F1") == 0 || 
+        strcmp(e->code, "SoftLeft") == 0 ||
+        e->keyCode == 112 || e->keyCode == 115) {
+        return KEY_SOFT_LEFT;
+    }
+
+    // KaiOS & Browser Soft Right Key (SoftRight, SoftKeyRight, F2, keyCode 113/114/117)
+    if (strcmp(e->key, "SoftRight") == 0 || 
+        strcmp(e->key, "SoftKeyRight") == 0 || 
+        strcmp(e->key, "F2") == 0 || 
+        strcmp(e->code, "F2") == 0 || 
+        strcmp(e->code, "SoftRight") == 0 ||
+        e->keyCode == 113 || e->keyCode == 114 || e->keyCode == 117) {
+        return KEY_SOFT_RIGHT;
+    }
+
+    // D-Pad Navigation
+    if (strcmp(e->key, "ArrowUp") == 0 || strcmp(e->code, "ArrowUp") == 0 || e->keyCode == 38) return KEY_UP;
+    if (strcmp(e->key, "ArrowDown") == 0 || strcmp(e->code, "ArrowDown") == 0 || e->keyCode == 40) return KEY_DOWN;
+    if (strcmp(e->key, "ArrowLeft") == 0 || strcmp(e->code, "ArrowLeft") == 0 || e->keyCode == 37) return KEY_LEFT;
+    if (strcmp(e->key, "ArrowRight") == 0 || strcmp(e->code, "ArrowRight") == 0 || e->keyCode == 39) return KEY_RIGHT;
+
+    // Fire / Select / Action
+    if (strcmp(e->key, "Enter") == 0 || strcmp(e->key, "Select") == 0 || strcmp(e->key, " ") == 0 || e->keyCode == 13 || e->keyCode == 32) return KEY_FIRE;
+
+    // Back & Call Keys
+    if (strcmp(e->key, "Call") == 0 || e->keyCode == 102) return KEY_CALL;
+    if (strcmp(e->key, "Backspace") == 0 || strcmp(e->key, "GoBack") == 0 || strcmp(e->key, "Escape") == 0 || e->keyCode == 8 || e->keyCode == 27 || e->keyCode == 461) return KEY_BACK;
+
+    // Numeric Keys
+    if (e->key[0] >= '0' && e->key[0] <= '9' && e->key[1] == '\0') {
+        return KEY_NUM0 + (e->key[0] - '0');
+    }
+    if (e->keyCode >= 48 && e->keyCode <= 57) {
+        return KEY_NUM0 + (e->keyCode - 48);
+    }
+
+    if (strcmp(e->key, "*") == 0 || e->keyCode == 170) return KEY_STAR;
+    if (strcmp(e->key, "#") == 0 || e->keyCode == 163) return KEY_HASH;
+
+    return -1;
+}
+
+static EM_BOOL on_emscripten_keydown(int eventType, const EmscriptenKeyboardEvent *e, void *userData) {
+    int k = parse_emscripten_kaios_key(e);
+    if (k >= 0 && k < KEY_COUNT) {
+        engine_set_key_state(k, true);
+        return EM_TRUE;
+    }
+    return EM_FALSE;
+}
+
+static EM_BOOL on_emscripten_keyup(int eventType, const EmscriptenKeyboardEvent *e, void *userData) {
+    int k = parse_emscripten_kaios_key(e);
+    if (k >= 0 && k < KEY_COUNT) {
+        engine_set_key_state(k, false);
+        return EM_TRUE;
+    }
+    return EM_FALSE;
+}
+#endif
+
+static void process_events() {
+    memset(g_engine.keys_pressed, 0, sizeof(g_engine.keys_pressed));
+    memset(g_engine.keys_released, 0, sizeof(g_engine.keys_released));
+
+    SDL_Event event;
+    while (SDL_PollEvent(&event)) {
+        if (event.type == SDL_QUIT) {
+            g_engine.is_running = false;
+        } else if (event.type == SDL_KEYDOWN) {
+            int k = map_sdl_key_to_kaios(event.key.keysym.sym);
+            if (k >= 0 && k < KEY_COUNT) {
+                if (!g_engine.keys_down[k]) {
+                    g_engine.keys_pressed[k] = true;
+                }
+                g_engine.keys_down[k] = true;
+            }
+        } else if (event.type == SDL_KEYUP) {
+            int k = map_sdl_key_to_kaios(event.key.keysym.sym);
+            if (k >= 0 && k < KEY_COUNT) {
+                if (g_engine.keys_down[k]) {
+                    g_engine.keys_released[k] = true;
+                }
+                g_engine.keys_down[k] = false;
+            }
+        }
+    }
+}
+
+static void main_loop_step() {
+    uint32_t current_ticks = SDL_GetTicks();
+    float dt = (current_ticks - g_last_ticks) / 1000.0f;
+    if (dt > 0.1f) dt = 0.1f;
+    g_last_ticks = current_ticks;
+    
+    g_engine.delta_time = dt;
+    g_engine.total_time += dt;
+    g_engine.frame_count++;
+
+    process_events();
+
+    if (g_lua) {
+        LuaBindings::call_game_update(g_lua, dt);
+    }
+    AudioEngine::update(dt);
+
+    if (g_lua) {
+        LuaBindings::call_game_draw(g_lua);
+    }
+
+    SDL_UpdateTexture(g_texture, NULL, g_engine.framebuffer, SCREEN_WIDTH * sizeof(uint32_t));
+    SDL_RenderClear(g_renderer);
+    SDL_RenderCopy(g_renderer, g_texture, NULL, NULL);
+    SDL_RenderPresent(g_renderer);
+}
+
+extern "C" {
+EMSCRIPTEN_KEEPALIVE void run_lua_string(const char* code) {
+    if (g_lua && code) LuaBindings::execute_string(g_lua, code);
+}
+
+EMSCRIPTEN_KEEPALIVE void load_game_file(const char* filepath) {
+    if (g_lua && filepath) {
+        LuaBindings::execute_file(g_lua, filepath);
+        LuaBindings::call_game_init(g_lua);
+    }
+}
+}
+
+int main(int argc, char* argv[]) {
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0) return 1;
+
+    g_window = SDL_CreateWindow("KaiOS Game Engine", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
+    g_renderer = SDL_CreateRenderer(g_window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+    g_texture = SDL_CreateTexture(g_renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, SCREEN_WIDTH, SCREEN_HEIGHT);
+
+    memset(&g_engine, 0, sizeof(g_engine));
+    g_engine.is_running = true;
+    AudioEngine::init();
+
+    g_lua = luaL_newstate();
+    luaL_openlibs(g_lua);
+    LuaBindings::init(g_lua);
+
+    if (!LuaBindings::execute_file(g_lua, "/game/main.lua")) {
+        const char* fallback_script = "function init() end function update(dt) end function draw() end";
+        LuaBindings::execute_string(g_lua, fallback_script);
+    }
+    LuaBindings::call_game_init(g_lua);
+
+    g_last_ticks = SDL_GetTicks();
+
+#ifdef __EMSCRIPTEN__
+    emscripten_set_keydown_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, NULL, EM_TRUE, on_emscripten_keydown);
+    emscripten_set_keyup_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, NULL, EM_TRUE, on_emscripten_keyup);
+    emscripten_set_main_loop(main_loop_step, 0, 1);
+#endif
+
+    return 0;
+}`
   },
   {
     path: 'src-engine/engine_core.hpp',
@@ -310,6 +547,43 @@ function draw()
     local b = engine.physics.get_body(ball)
     if b then engine.renderer2d.fill_circle(b.x, b.y, 8, 0xFFEF4444) end
 end`
+  },
+  {
+    path: 'webapp/index.html',
+    name: 'index.html',
+    category: 'webapp',
+    description: 'HTML5 loader for KaiOS app with hardware key listener and canvas initialization.',
+    language: 'html',
+    content: `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>KaiOS Game Engine</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; background: #0f172a; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+    canvas { width: 240px; height: 320px; display: block; image-rendering: pixelated; image-rendering: crisp-edges; background: #000; }
+  </style>
+</head>
+<body>
+  <canvas id="canvas" width="240" height="320" oncontextmenu="event.preventDefault()"></canvas>
+  <script>
+    var Module = {
+      canvas: (function() { return document.getElementById('canvas'); })()
+    };
+
+    // Global KaiOS Key Interceptor for Soft Keys & Navigation
+    window.addEventListener('keydown', function(e) {
+      if (['SoftLeft', 'SoftRight', 'F1', 'F2', 'Backspace', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].indexOf(e.key) !== -1 ||
+          [112, 113, 114, 115, 117, 8].indexOf(e.keyCode) !== -1) {
+        e.preventDefault();
+      }
+    }, { capture: true });
+  </script>
+  <script src="engine.js"></script>
+</body>
+</html>`
   },
   {
     path: 'webapp/manifest.webapp',

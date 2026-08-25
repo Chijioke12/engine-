@@ -59,6 +59,76 @@ static int map_sdl_key_to_kaios(SDL_Keycode key) {
     }
 }
 
+#ifdef __EMSCRIPTEN__
+static int parse_emscripten_kaios_key(const EmscriptenKeyboardEvent *e) {
+    if (!e) return -1;
+
+    // KaiOS & Browser Soft Left Key (SoftLeft, SoftKeyLeft, F1, keyCode 112/115)
+    if (strcmp(e->key, "SoftLeft") == 0 || 
+        strcmp(e->key, "SoftKeyLeft") == 0 || 
+        strcmp(e->key, "F1") == 0 || 
+        strcmp(e->code, "F1") == 0 || 
+        strcmp(e->code, "SoftLeft") == 0 ||
+        e->keyCode == 112 || e->keyCode == 115) {
+        return KEY_SOFT_LEFT;
+    }
+
+    // KaiOS & Browser Soft Right Key (SoftRight, SoftKeyRight, F2, keyCode 113/114/117)
+    if (strcmp(e->key, "SoftRight") == 0 || 
+        strcmp(e->key, "SoftKeyRight") == 0 || 
+        strcmp(e->key, "F2") == 0 || 
+        strcmp(e->code, "F2") == 0 || 
+        strcmp(e->code, "SoftRight") == 0 ||
+        e->keyCode == 113 || e->keyCode == 114 || e->keyCode == 117) {
+        return KEY_SOFT_RIGHT;
+    }
+
+    // D-Pad Navigation
+    if (strcmp(e->key, "ArrowUp") == 0 || strcmp(e->code, "ArrowUp") == 0 || e->keyCode == 38) return KEY_UP;
+    if (strcmp(e->key, "ArrowDown") == 0 || strcmp(e->code, "ArrowDown") == 0 || e->keyCode == 40) return KEY_DOWN;
+    if (strcmp(e->key, "ArrowLeft") == 0 || strcmp(e->code, "ArrowLeft") == 0 || e->keyCode == 37) return KEY_LEFT;
+    if (strcmp(e->key, "ArrowRight") == 0 || strcmp(e->code, "ArrowRight") == 0 || e->keyCode == 39) return KEY_RIGHT;
+
+    // Fire / Select / Action
+    if (strcmp(e->key, "Enter") == 0 || strcmp(e->key, "Select") == 0 || strcmp(e->key, " ") == 0 || e->keyCode == 13 || e->keyCode == 32) return KEY_FIRE;
+
+    // Back & Call Keys
+    if (strcmp(e->key, "Call") == 0 || e->keyCode == 102) return KEY_CALL;
+    if (strcmp(e->key, "Backspace") == 0 || strcmp(e->key, "GoBack") == 0 || strcmp(e->key, "Escape") == 0 || e->keyCode == 8 || e->keyCode == 27 || e->keyCode == 461) return KEY_BACK;
+
+    // Numeric Keys
+    if (e->key[0] >= '0' && e->key[0] <= '9' && e->key[1] == '\0') {
+        return KEY_NUM0 + (e->key[0] - '0');
+    }
+    if (e->keyCode >= 48 && e->keyCode <= 57) {
+        return KEY_NUM0 + (e->keyCode - 48);
+    }
+
+    if (strcmp(e->key, "*") == 0 || e->keyCode == 170) return KEY_STAR;
+    if (strcmp(e->key, "#") == 0 || e->keyCode == 163) return KEY_HASH;
+
+    return -1;
+}
+
+static EM_BOOL on_emscripten_keydown(int eventType, const EmscriptenKeyboardEvent *e, void *userData) {
+    int k = parse_emscripten_kaios_key(e);
+    if (k >= 0 && k < KEY_COUNT) {
+        engine_set_key_state(k, true);
+        return EM_TRUE;
+    }
+    return EM_FALSE;
+}
+
+static EM_BOOL on_emscripten_keyup(int eventType, const EmscriptenKeyboardEvent *e, void *userData) {
+    int k = parse_emscripten_kaios_key(e);
+    if (k >= 0 && k < KEY_COUNT) {
+        engine_set_key_state(k, false);
+        return EM_TRUE;
+    }
+    return EM_FALSE;
+}
+#endif
+
 static void process_events() {
     // Reset frame-specific key transitions
     memset(g_engine.keys_pressed, 0, sizeof(g_engine.keys_pressed));
@@ -199,6 +269,8 @@ int main(int argc, char* argv[]) {
     g_last_ticks = SDL_GetTicks();
 
 #ifdef __EMSCRIPTEN__
+    emscripten_set_keydown_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, NULL, EM_TRUE, on_emscripten_keydown);
+    emscripten_set_keyup_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, NULL, EM_TRUE, on_emscripten_keyup);
     // 0 fps uses requestAnimationFrame
     emscripten_set_main_loop(main_loop_step, 0, 1);
 #else
