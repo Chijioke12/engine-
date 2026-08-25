@@ -256,7 +256,7 @@ static int l_input_is_released(lua_State* L) {
 
 static int l_audio_play_preset(lua_State* L) {
     int preset_id = (int)luaL_checknumber(L, 1);
-    AudioSystem::play_preset(preset_id);
+    AudioEngine::play_preset(preset_id);
     return 0;
 }
 
@@ -265,7 +265,7 @@ static int l_audio_play_sfx(lua_State* L) {
     float freq = (float)luaL_checknumber(L, 2);
     float duration = (float)luaL_checknumber(L, 3);
     float vol = (float)luaL_optnumber(L, 4, 0.5f);
-    AudioSystem::play_sfx(wave_type, freq, duration, vol);
+    AudioEngine::play_sfx((AudioEngine::SoundWave)wave_type, freq, freq, duration, vol);
     return 0;
 }
 
@@ -294,6 +294,16 @@ void register_engine_api(lua_State* L) {
     lua_pushinteger(L, KEY_7);          lua_setglobal(L, "KEY_7");
     lua_pushinteger(L, KEY_8);          lua_setglobal(L, "KEY_8");
     lua_pushinteger(L, KEY_9);          lua_setglobal(L, "KEY_9");
+    lua_pushinteger(L, KEY_NUM0);       lua_setglobal(L, "KEY_NUM0");
+    lua_pushinteger(L, KEY_NUM1);       lua_setglobal(L, "KEY_NUM1");
+    lua_pushinteger(L, KEY_NUM2);       lua_setglobal(L, "KEY_NUM2");
+    lua_pushinteger(L, KEY_NUM3);       lua_setglobal(L, "KEY_NUM3");
+    lua_pushinteger(L, KEY_NUM4);       lua_setglobal(L, "KEY_NUM4");
+    lua_pushinteger(L, KEY_NUM5);       lua_setglobal(L, "KEY_NUM5");
+    lua_pushinteger(L, KEY_NUM6);       lua_setglobal(L, "KEY_NUM6");
+    lua_pushinteger(L, KEY_NUM7);       lua_setglobal(L, "KEY_NUM7");
+    lua_pushinteger(L, KEY_NUM8);       lua_setglobal(L, "KEY_NUM8");
+    lua_pushinteger(L, KEY_NUM9);       lua_setglobal(L, "KEY_NUM9");
     lua_pushinteger(L, KEY_STAR);       lua_setglobal(L, "KEY_STAR");
     lua_pushinteger(L, KEY_HASH);       lua_setglobal(L, "KEY_HASH");
     lua_pushinteger(L, KEY_CALL);       lua_setglobal(L, "KEY_CALL");
@@ -350,6 +360,10 @@ void register_engine_api(lua_State* L) {
     lua_setfield(L, -2, "audio");
 
     lua_setglobal(L, "engine");
+}
+
+void init(lua_State* L) {
+    register_engine_api(L);
 }
 
 bool execute_file(lua_State* L, const char* filepath) {

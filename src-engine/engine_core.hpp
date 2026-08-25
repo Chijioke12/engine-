@@ -13,6 +13,16 @@ enum KaiOSKey {
     KEY_FIRE = 4,       // Enter / D-Pad Center
     KEY_SOFT_LEFT = 5,  // SoftLeft (F1)
     KEY_SOFT_RIGHT = 6, // SoftRight (F2)
+    KEY_0 = 7,
+    KEY_1 = 8,
+    KEY_2 = 9,
+    KEY_3 = 10,
+    KEY_4 = 11,
+    KEY_5 = 12,
+    KEY_6 = 13,
+    KEY_7 = 14,
+    KEY_8 = 15,
+    KEY_9 = 16,
     KEY_NUM0 = 7,
     KEY_NUM1 = 8,
     KEY_NUM2 = 9,
@@ -48,3 +58,19 @@ void engine_update(float dt);
 void engine_render();
 void engine_shutdown();
 void engine_set_key_state(int key_code, bool is_down);
+
+namespace EngineCore {
+    inline bool is_key_down(int key) {
+        if (key >= 0 && key < KEY_COUNT) return g_engine.keys_down[key];
+        return false;
+    }
+    inline bool is_key_pressed(int key) {
+        if (key >= 0 && key < KEY_COUNT) return g_engine.keys_pressed[key];
+        return false;
+    }
+    inline bool is_key_released(int key) {
+        if (key >= 0 && key < KEY_COUNT) return g_engine.keys_released[key];
+        return false;
+    }
+}
+

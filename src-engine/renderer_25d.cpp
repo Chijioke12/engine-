@@ -12,6 +12,17 @@ void init_raycaster() {
     memset(g_z_buffer, 0, sizeof(g_z_buffer));
 }
 
+void render_raycast(
+    const RaycastCamera& cam,
+    const uint8_t* world_map,
+    int map_w,
+    int map_h,
+    uint32_t ceiling_color,
+    uint32_t floor_color
+) {
+    render_raycaster(cam, world_map, map_w, map_h, NULL, 0, NULL, 0, ceiling_color, floor_color);
+}
+
 void render_raycaster(
     const RaycastCamera& cam,
     const uint8_t* world_map,

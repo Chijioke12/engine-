@@ -17,6 +17,14 @@ namespace Renderer25D {
     };
 
     void init_raycaster();
+    void render_raycast(
+        const RaycastCamera& cam,
+        const uint8_t* world_map,
+        int map_w,
+        int map_h,
+        uint32_t ceiling_color,
+        uint32_t floor_color
+    );
     void render_raycaster(
         const RaycastCamera& cam,
         const uint8_t* world_map,
