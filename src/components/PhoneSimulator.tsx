@@ -835,7 +835,7 @@ export const PhoneSimulator: React.FC<PhoneSimulatorProps> = ({
                 pressedKey === 'softLeft' ? 'bg-sky-500 text-white border-sky-400' : 'bg-slate-800/90 border-slate-700 hover:bg-slate-750'
               }`}
             >
-              [F1] L-SOFT
+              SOFT LEFT
             </button>
 
             {/* D-Pad Up Button */}
@@ -856,7 +856,7 @@ export const PhoneSimulator: React.FC<PhoneSimulatorProps> = ({
                 pressedKey === 'softRight' ? 'bg-sky-500 text-white border-sky-400' : 'bg-slate-800/90 border-slate-700 hover:bg-slate-750'
               }`}
             >
-              R-SOFT [F2]
+              SOFT RIGHT
             </button>
           </div>
 
@@ -958,7 +958,7 @@ export const PhoneSimulator: React.FC<PhoneSimulatorProps> = ({
 
       <div className="mt-3 text-[11px] text-slate-400 flex items-center space-x-1.5">
         <Sparkles size={12} className="text-sky-400" />
-        <span>Keyboard: <b>Arrow Keys</b> / <b>WASD</b>, <b>Enter</b> (Fire), <b>F1/F2</b></span>
+        <span>Keyboard: <b>Arrow Keys</b> / <b>WASD</b>, <b>Enter</b> (Fire), <b>Soft Left</b> / <b>Soft Right</b></span>
       </div>
     </div>
   );

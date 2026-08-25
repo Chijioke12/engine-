@@ -11,8 +11,8 @@ enum KaiOSKey {
     KEY_LEFT = 2,
     KEY_RIGHT = 3,
     KEY_FIRE = 4,       // Enter / D-Pad Center
-    KEY_SOFT_LEFT = 5,  // SoftLeft (F1)
-    KEY_SOFT_RIGHT = 6, // SoftRight (F2)
+    KEY_SOFT_LEFT = 5,  // SoftLeft
+    KEY_SOFT_RIGHT = 6, // SoftRight
     KEY_0 = 7,
     KEY_1 = 8,
     KEY_2 = 9,

@@ -62,7 +62,7 @@ function update(dt)
         engine.audio.play_preset(3) -- Cannon SFX
     end
 
-    -- Reset World (SoftKey Right / F2)
+    -- Reset World (SoftKey Right)
     if engine.input.is_pressed(KEY_SOFT_RIGHT) or engine.input.is_pressed(KEY_STAR) then
         init()
     end
